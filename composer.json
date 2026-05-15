@@ -1,0 +1,37 @@
+{
+    "name": "misakstvanu/laravel-fio",
+    "description": "Modern Laravel client for Fio Banking API",
+    "type": "library",
+    "license": "MIT",
+    "require": {
+        "php": "^8.3",
+        "illuminate/support": "^12.0|^13.0"
+    },
+    "autoload": {
+        "psr-4": {
+            "Misakstvanu\\LaravelFio\\": "src/"
+        }
+    },
+    "autoload-dev": {
+        "psr-4": {
+            "Misakstvanu\\LaravelFio\\Tests\\": "tests/"
+        }
+    },
+    "extra": {
+        "laravel": {
+            "providers": [
+                "Misakstvanu\\LaravelFio\\LaravelFioServiceProvider"
+            ],
+            "aliases": {
+                "Fio": "Misakstvanu\\LaravelFio\\Facades\\Fio"
+            }
+        }
+    },
+    "require-dev": {
+        "orchestra/testbench": "^10.0",
+        "phpunit/phpunit": "^12.0"
+    },
+    "minimum-stability": "stable",
+    "prefer-stable": true
+}
+
