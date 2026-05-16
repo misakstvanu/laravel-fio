@@ -20,6 +20,19 @@ Modern Laravel client for Fio Banking API (`v1/rest`).
 - Supported types: `abo`, `xml`, `pain001_xml`, `pain008_xml`
 - Optional language parameter: `cs`, `sk`, `en`
 
+## High-level operations helper
+
+`Misakstvanu\\LaravelFio\\FioOperations` provides app-ready helpers built on top of `FioClient`:
+
+- `transactionsForAccount(token, configuredAccountNumber, days)`
+  - fetches period transactions as JSON
+  - returns `TransactionsResult` DTO with `BankTransaction` objects
+  - returns mismatch warning if token account differs from configured account
+- `sendPaymentOrders(token, accountNumber, repayments, importType)`
+  - accepts a list of `PaymentOrder` DTO objects
+  - supports `xml` and `pain001_xml`
+  - applies token cooldown guard (30s)
+
 ## Quick usage
 
 ```php
@@ -50,4 +63,6 @@ php artisan fio:test-read --token=YOUR_TOKEN --operation=period --from=2026-05-0
 ```bash
 vendor/bin/phpunit
 ```
+
+
 

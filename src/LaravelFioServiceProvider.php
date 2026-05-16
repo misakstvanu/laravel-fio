@@ -20,6 +20,10 @@ class LaravelFioServiceProvider extends ServiceProvider
             );
         });
 
+        $this->app->singleton(FioOperations::class, function ($app): FioOperations {
+            return new FioOperations($app->make(FioClient::class));
+        });
+
         $this->app->alias('laravel-fio', FioClient::class);
     }
 
@@ -36,4 +40,5 @@ class LaravelFioServiceProvider extends ServiceProvider
         }
     }
 }
+
 
