@@ -21,4 +21,3 @@ class Fio extends Facade
         return 'laravel-fio';
     }
 }
-

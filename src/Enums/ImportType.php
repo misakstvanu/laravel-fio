@@ -14,4 +14,3 @@ enum ImportType: string
         return self::from(strtolower($type));
     }
 }
-

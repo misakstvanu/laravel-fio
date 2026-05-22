@@ -20,4 +20,3 @@ enum ExportFormat: string
         return self::from(strtolower($format));
     }
 }
-

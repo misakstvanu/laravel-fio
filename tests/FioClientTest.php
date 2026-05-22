@@ -46,4 +46,3 @@ class FioClientTest extends TestCase
         app('laravel-fio')->import('token', ImportType::Xml, __DIR__.'/missing.xml');
     }
 }
-

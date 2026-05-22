@@ -10,8 +10,7 @@ class TransactionsResult
     public function __construct(
         public readonly array $transactions,
         public readonly ?string $warning,
-    ) {
-    }
+    ) {}
 
     /**
      * @return list<array<string, mixed>>
@@ -24,4 +23,3 @@ class TransactionsResult
         );
     }
 }
-

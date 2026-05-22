@@ -17,9 +17,7 @@ class FioOperations
 {
     private const int TOKEN_COOLDOWN_SECONDS = 30;
 
-    public function __construct(private readonly FioClient $client)
-    {
-    }
+    public function __construct(private readonly FioClient $client) {}
 
     public function transactionsForAccount(string $token, string $configuredAccountNumber, int $days = 60): TransactionsResult
     {
@@ -343,6 +341,3 @@ XML;
             || str_contains($message, 'curl error 28');
     }
 }
-
-
-

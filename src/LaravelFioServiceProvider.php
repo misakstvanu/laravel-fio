@@ -40,5 +40,3 @@ class LaravelFioServiceProvider extends ServiceProvider
         }
     }
 }
-
-

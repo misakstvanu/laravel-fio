@@ -9,7 +9,5 @@ class PaymentOrder
         public readonly string $accountNumber,
         public readonly float $amount,
         public readonly string $dueDate,
-    ) {
-    }
+    ) {}
 }
-

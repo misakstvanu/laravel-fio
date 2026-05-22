@@ -74,4 +74,3 @@ class FioTestReadCommand extends Command
         }
     }
 }
-

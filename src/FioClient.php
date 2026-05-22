@@ -20,8 +20,7 @@ class FioClient
         private readonly int $timeout,
         private readonly int $connectTimeout,
         private readonly bool $verifySsl,
-    ) {
-    }
+    ) {}
 
     public function transactionsByPeriod(
         string $token,
@@ -184,4 +183,3 @@ class FioClient
         return $language instanceof ResponseLanguage ? $language : ResponseLanguage::from(strtolower($language));
     }
 }
-

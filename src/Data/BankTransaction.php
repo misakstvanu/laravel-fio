@@ -12,8 +12,7 @@ class BankTransaction
         public readonly ?string $counterAccount,
         public readonly ?string $description,
         public readonly ?string $message,
-    ) {
-    }
+    ) {}
 
     /**
      * @return array<string, mixed>
@@ -31,4 +30,3 @@ class BankTransaction
         ];
     }
 }
-

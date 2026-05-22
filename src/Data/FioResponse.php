@@ -10,8 +10,7 @@ class FioResponse
     public function __construct(
         public readonly Response $response,
         public readonly string $format,
-    ) {
-    }
+    ) {}
 
     public function body(): string
     {
@@ -39,4 +38,3 @@ class FioResponse
         return $xml instanceof SimpleXMLElement ? $xml : null;
     }
 }
-

@@ -19,4 +19,3 @@ class FioApiException extends Exception
         return new self($message, $response->status());
     }
 }
-

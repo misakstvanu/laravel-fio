@@ -8,4 +8,3 @@ enum ResponseLanguage: string
     case Slovak = 'sk';
     case English = 'en';
 }
-
