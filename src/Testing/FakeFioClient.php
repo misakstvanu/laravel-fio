@@ -12,6 +12,7 @@ use Misakstvanu\LaravelFio\Enums\ImportType;
 use Misakstvanu\LaravelFio\Enums\ResponseLanguage;
 use Misakstvanu\LaravelFio\FioClient;
 use RuntimeException;
+use Throwable;
 
 /**
  * A fixture-backed stand-in for the real HTTP client.
@@ -44,6 +45,13 @@ class FakeFioClient extends FioClient implements FioClientInterface
      * @var array<string, string>
      */
     private array $stubs = [];
+
+    /**
+     * Errors to raise instead of answering, keyed by operation name.
+     *
+     * @var array<string, Throwable>
+     */
+    private array $errors = [];
 
     /**
      * Every call in the order it was made.
@@ -154,6 +162,28 @@ class FakeFioClient extends FioClient implements FioClientInterface
     }
 
     /**
+     * Makes the operation fail, the way a timeout or a 500 from FIO would.
+     *
+     * The call is still recorded before the error is raised, so a test can tell
+     * a refused call apart from one that never left. Passing `null` clears a
+     * previously registered error and restores the stub or fixture answer.
+     */
+    public function throwOn(string $operation, ?Throwable $error): static
+    {
+        $this->assertKnownOperation($operation);
+
+        if ($error === null) {
+            unset($this->errors[$operation]);
+
+            return $this;
+        }
+
+        $this->errors[$operation] = $error;
+
+        return $this;
+    }
+
+    /**
      * @return list<array{operation: string, args: array<string, mixed>}>
      */
     public function recorded(): array
@@ -180,10 +210,16 @@ class FakeFioClient extends FioClient implements FioClientInterface
      * Records the call and wraps the resolved body in a real client response.
      *
      * @param  array<string, mixed>  $args
+     *
+     * @throws Throwable the error registered for this operation, if any
      */
     private function respond(string $operation, array $args, string $format): FioResponse
     {
         $this->recorded[] = ['operation' => $operation, 'args' => $args];
+
+        if (array_key_exists($operation, $this->errors)) {
+            throw $this->errors[$operation];
+        }
 
         return new FioResponse(
             new Response(new Psr7Response(200, [], $this->bodyFor($operation, $format))),

@@ -2,13 +2,18 @@
 
 namespace Misakstvanu\LaravelFio\Tests;
 
+use Illuminate\Support\Facades\Cache;
 use Misakstvanu\LaravelFio\Contracts\FioClientInterface;
 use Misakstvanu\LaravelFio\Data\BankTransaction;
+use Misakstvanu\LaravelFio\Data\PaymentOrder;
+use Misakstvanu\LaravelFio\Enums\ImportType;
+use Misakstvanu\LaravelFio\Exceptions\FioRateLimitException;
+use Misakstvanu\LaravelFio\Exceptions\FioTimeoutException;
 use Misakstvanu\LaravelFio\FioOperations;
 use Misakstvanu\LaravelFio\Testing\FakeFioClient;
 
 /**
- * `FioOperations::transactionsForAccount()` against recorded Fio envelopes.
+ * `FioOperations` against recorded Fio envelopes, plus the token cooldown.
  *
  * Every fixture under `tests/fixtures/period-transactions-*.json` is built on
  * the `accountStatement` body a real `GET /v1/rest/periods/<token>/…json` call
@@ -26,22 +31,36 @@ class FioOperationsTest extends TestCase
     /**
      * Wires the operations wrapper onto the fake client replaying one body.
      */
-    private function operationsReplaying(string $body): FioOperations
+    private function operationsReplaying(string $body, string $operation = 'transactionsByPeriod'): FioOperations
     {
         config(['fio.driver' => 'fake', 'cache.default' => 'array']);
         $this->app->forgetInstance('laravel-fio');
         $this->app->forgetInstance(FioOperations::class);
 
-        $client = $this->app->make(FioClientInterface::class);
-        $this->assertInstanceOf(FakeFioClient::class, $client);
-        $client->stub('transactionsByPeriod', $body);
+        $this->fakeClient()->stub($operation, $body);
 
         return $this->app->make(FioOperations::class);
+    }
+
+    /**
+     * The fake currently bound to the container.
+     */
+    private function fakeClient(): FakeFioClient
+    {
+        $client = $this->app->make(FioClientInterface::class);
+        $this->assertInstanceOf(FakeFioClient::class, $client);
+
+        return $client;
     }
 
     private function fixture(string $name): string
     {
         return (string) file_get_contents(__DIR__.'/fixtures/'.$name.'.json');
+    }
+
+    private function cooldownKey(string $token): string
+    {
+        return 'fio.cooldown.'.sha1($token);
     }
 
     public function test_an_empty_statement_yields_no_transactions_and_no_warning(): void
@@ -115,5 +134,73 @@ class FioOperationsTest extends TestCase
         $this->assertCount(1, $result->transactions);
         $this->assertSame('2026-10-04', $result->transactions[0]->date);
         $this->assertSame('20261003003', $result->transactions[0]->variableSymbol);
+    }
+
+    public function test_a_second_successful_read_inside_the_window_is_refused(): void
+    {
+        $operations = $this->operationsReplaying($this->fixture('period-transactions-empty'));
+
+        $operations->transactionsForAccount('token-twice', self::ACCOUNT);
+        $this->assertTrue(Cache::has($this->cooldownKey('token-twice')));
+
+        $this->expectException(FioRateLimitException::class);
+        $this->expectExceptionMessage('FIO API rate limit: please wait at least 30 seconds between requests.');
+
+        $operations->transactionsForAccount('token-twice', self::ACCOUNT);
+    }
+
+    public function test_a_failed_read_does_not_burn_the_window(): void
+    {
+        $operations = $this->operationsReplaying($this->fixture('period-transactions-empty'));
+        $this->fakeClient()->throwOn('transactionsByPeriod', new FioTimeoutException('FIO API request timed out.'));
+
+        try {
+            $operations->transactionsForAccount('token-retry', self::ACCOUNT);
+            $this->fail('The fake was configured to fail, so the read should have thrown.');
+        } catch (FioTimeoutException) {
+            // The failure is the point; what matters is what it did not write.
+        }
+
+        $this->assertFalse(Cache::has($this->cooldownKey('token-retry')));
+
+        $this->fakeClient()->throwOn('transactionsByPeriod', null);
+        $result = $operations->transactionsForAccount('token-retry', self::ACCOUNT);
+
+        $this->assertSame([], $result->transactions);
+        $this->assertTrue(Cache::has($this->cooldownKey('token-retry')));
+    }
+
+    public function test_a_second_payment_order_inside_the_window_is_refused(): void
+    {
+        $operations = $this->operationsReplaying('<response><status>ok</status></response>', 'import');
+        $order = new PaymentOrder('Rokytná Kuba', '2809876543/2010', 500.0, now()->format('Y-m-d'));
+
+        $operations->sendPaymentOrders('token-import', self::ACCOUNT, [$order], ImportType::Xml);
+        $this->assertTrue(Cache::has($this->cooldownKey('token-import')));
+
+        $this->expectException(FioRateLimitException::class);
+
+        $operations->sendPaymentOrders('token-import', self::ACCOUNT, [$order], ImportType::Xml);
+    }
+
+    public function test_a_failed_payment_order_does_not_burn_the_window(): void
+    {
+        $operations = $this->operationsReplaying('<response><status>ok</status></response>', 'import');
+        $order = new PaymentOrder('Rokytná Kuba', '2809876543/2010', 500.0, now()->format('Y-m-d'));
+        $this->fakeClient()->throwOn('import', new FioTimeoutException('FIO API request timed out.'));
+
+        try {
+            $operations->sendPaymentOrders('token-import-retry', self::ACCOUNT, [$order], ImportType::Xml);
+            $this->fail('The fake was configured to fail, so the import should have thrown.');
+        } catch (FioTimeoutException) {
+            // The failure is the point; what matters is what it did not write.
+        }
+
+        $this->assertFalse(Cache::has($this->cooldownKey('token-import-retry')));
+
+        $this->fakeClient()->throwOn('import', null);
+        $operations->sendPaymentOrders('token-import-retry', self::ACCOUNT, [$order], ImportType::Xml);
+
+        $this->assertTrue(Cache::has($this->cooldownKey('token-import-retry')));
     }
 }

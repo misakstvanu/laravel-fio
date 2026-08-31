@@ -5,6 +5,7 @@ namespace Misakstvanu\LaravelFio\Tests;
 use Misakstvanu\LaravelFio\Enums\ExportFormat;
 use Misakstvanu\LaravelFio\Enums\ImportType;
 use Misakstvanu\LaravelFio\Enums\ResponseLanguage;
+use Misakstvanu\LaravelFio\Exceptions\FioTimeoutException;
 use Misakstvanu\LaravelFio\FioClient;
 use Misakstvanu\LaravelFio\Testing\FakeFioClient;
 use PHPUnit\Framework\TestCase as BaseTestCase;
@@ -197,6 +198,59 @@ class FakeFioClientTest extends BaseTestCase
         $this->assertSame($root.'merchant-transactions.xml', $client->fixtureFor('merchantTransactions', 'xml'));
         $this->assertSame($root.'last-statement.xml', $client->fixtureFor('lastStatementNumber', 'xml'));
         $this->assertSame($root.'import.xml', $client->fixtureFor('import', 'xml'));
+    }
+
+    public function test_a_registered_error_is_raised_instead_of_the_stub(): void
+    {
+        $client = new FakeFioClient($this->fixturePath);
+        $client->stub('transactionsByPeriod', '{"from":"stub"}');
+        $returned = $client->throwOn('transactionsByPeriod', new FioTimeoutException('FIO API request timed out.'));
+
+        $this->assertSame($client, $returned);
+
+        try {
+            $client->transactionsByPeriod('token', '2026-06-01', '2026-08-30');
+            $this->fail('The registered error should have been raised.');
+        } catch (FioTimeoutException $e) {
+            $this->assertSame('FIO API request timed out.', $e->getMessage());
+        }
+
+        $this->assertSame(
+            [[
+                'operation' => 'transactionsByPeriod',
+                'args' => ['token' => 'token', 'from' => '2026-06-01', 'to' => '2026-08-30', 'format' => ExportFormat::Json],
+            ]],
+            $client->recorded(),
+        );
+    }
+
+    public function test_only_the_named_operation_fails(): void
+    {
+        $client = new FakeFioClient($this->fixturePath);
+        $client->stub('lastStatementNumber', '<response>1</response>');
+        $client->throwOn('import', new FioTimeoutException('FIO API request timed out.'));
+
+        $this->assertSame('<response>1</response>', $client->lastStatementNumber('token')->body());
+    }
+
+    public function test_a_null_error_restores_the_stubbed_answer(): void
+    {
+        $client = new FakeFioClient($this->fixturePath);
+        $client->stub('lastStatementNumber', '<response>1</response>');
+        $client->throwOn('lastStatementNumber', new FioTimeoutException('FIO API request timed out.'));
+        $client->throwOn('lastStatementNumber', null);
+
+        $this->assertSame('<response>1</response>', $client->lastStatementNumber('token')->body());
+    }
+
+    public function test_an_unknown_operation_cannot_be_made_to_fail(): void
+    {
+        $client = new FakeFioClient($this->fixturePath);
+
+        $this->expectException(RuntimeException::class);
+        $this->expectExceptionMessage('FIO fake: unknown operation [transactionsByYear].');
+
+        $client->throwOn('transactionsByYear', new FioTimeoutException('FIO API request timed out.'));
     }
 
     public function test_an_unknown_operation_cannot_be_stubbed(): void

@@ -30,6 +30,7 @@ class FioOperations
             $statement = $this->client
                 ->transactionsByPeriod($token, $dateFrom, $dateTo, ExportFormat::Json)
                 ->json();
+            $this->markTokenUsed($token);
         } catch (FioRateLimitException|FioTimeoutException $e) {
             throw $e;
         } catch (FioApiException $e) {
@@ -101,6 +102,7 @@ class FioOperations
                 type: $resolvedImportType,
                 filePath: $tmpFile,
             );
+            $this->markTokenUsed($token);
         } catch (FioRateLimitException|FioTimeoutException $e) {
             throw $e;
         } catch (FioApiException $e) {
@@ -306,15 +308,32 @@ XML;
         return htmlspecialchars($value, ENT_XML1 | ENT_COMPAT, 'UTF-8');
     }
 
+    /**
+     * Refuses a call made while the token is still inside its cooldown window.
+     *
+     * @throws FioRateLimitException when the window has not elapsed yet
+     */
     private function enforceTokenCooldown(string $token): void
     {
-        $key = 'fio.cooldown.'.sha1($token);
-
-        if (Cache::has($key)) {
+        if (Cache::has($this->cooldownKey($token))) {
             throw new FioRateLimitException('FIO API rate limit: please wait at least 30 seconds between requests.');
         }
+    }
 
-        Cache::put($key, true, now()->addSeconds(self::TOKEN_COOLDOWN_SECONDS));
+    /**
+     * Opens a fresh cooldown window for the token.
+     *
+     * Called only once a request has actually reached FIO and come back, so a
+     * timeout or a server error does not cost the caller the whole window.
+     */
+    private function markTokenUsed(string $token): void
+    {
+        Cache::put($this->cooldownKey($token), true, now()->addSeconds(self::TOKEN_COOLDOWN_SECONDS));
+    }
+
+    private function cooldownKey(string $token): string
+    {
+        return 'fio.cooldown.'.sha1($token);
     }
 
     private function mapFioException(FioApiException $exception): RuntimeException
