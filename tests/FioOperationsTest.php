@@ -7,6 +7,7 @@ use Misakstvanu\LaravelFio\Contracts\FioClientInterface;
 use Misakstvanu\LaravelFio\Data\BankTransaction;
 use Misakstvanu\LaravelFio\Data\PaymentOrder;
 use Misakstvanu\LaravelFio\Enums\ImportType;
+use Misakstvanu\LaravelFio\Exceptions\FioApiException;
 use Misakstvanu\LaravelFio\Exceptions\FioRateLimitException;
 use Misakstvanu\LaravelFio\Exceptions\FioTimeoutException;
 use Misakstvanu\LaravelFio\FioOperations;
@@ -143,10 +144,78 @@ class FioOperationsTest extends TestCase
         $operations->transactionsForAccount('token-twice', self::ACCOUNT);
         $this->assertTrue(Cache::has($this->cooldownKey('token-twice')));
 
-        $this->expectException(FioRateLimitException::class);
-        $this->expectExceptionMessage('FIO API rate limit: please wait at least 30 seconds between requests.');
+        try {
+            $operations->transactionsForAccount('token-twice', self::ACCOUNT);
+            $this->fail('The window is still open, so the second read should have been refused.');
+        } catch (FioRateLimitException $e) {
+            $this->assertSame('FIO API rate limit: please wait at least 30 seconds between requests.', $e->getMessage());
+            $this->assertGreaterThan(0, $e->retryAfter);
+            $this->assertLessThanOrEqual(30, $e->retryAfter);
+        }
+    }
 
-        $operations->transactionsForAccount('token-twice', self::ACCOUNT);
+    public function test_an_unused_token_has_no_cooldown_left(): void
+    {
+        $operations = $this->operationsReplaying($this->fixture('period-transactions-empty'));
+
+        $this->assertSame(0, $operations->cooldownRemaining('token-never-used'));
+    }
+
+    public function test_a_successful_read_leaves_at_most_a_full_window_to_wait(): void
+    {
+        $operations = $this->operationsReplaying($this->fixture('period-transactions-empty'));
+
+        $operations->transactionsForAccount('token-remaining', self::ACCOUNT);
+
+        $remaining = $operations->cooldownRemaining('token-remaining');
+        $this->assertGreaterThan(0, $remaining);
+        $this->assertLessThanOrEqual(30, $remaining);
+    }
+
+    public function test_the_cooldown_counts_down_and_reaches_zero_with_the_window(): void
+    {
+        $operations = $this->operationsReplaying($this->fixture('period-transactions-empty'));
+
+        $operations->transactionsForAccount('token-countdown', self::ACCOUNT);
+
+        $this->travel(20)->seconds();
+        $this->assertSame(10, $operations->cooldownRemaining('token-countdown'));
+
+        $this->travel(10)->seconds();
+        $this->assertSame(0, $operations->cooldownRemaining('token-countdown'));
+
+        $result = $operations->transactionsForAccount('token-countdown', self::ACCOUNT);
+        $this->assertSame([], $result->transactions);
+    }
+
+    public function test_a_window_opened_before_the_countdown_existed_still_refuses(): void
+    {
+        $operations = $this->operationsReplaying($this->fixture('period-transactions-empty'));
+
+        /** The value a release before this countdown wrote. */
+        Cache::put($this->cooldownKey('token-legacy'), true, now()->addSeconds(30));
+
+        $this->assertSame(30, $operations->cooldownRemaining('token-legacy'));
+
+        $this->expectException(FioRateLimitException::class);
+
+        $operations->transactionsForAccount('token-legacy', self::ACCOUNT);
+    }
+
+    public function test_a_409_from_fio_quotes_the_thirty_second_rule(): void
+    {
+        $operations = $this->operationsReplaying($this->fixture('period-transactions-empty'));
+        $this->fakeClient()->throwOn(
+            'transactionsByPeriod',
+            new FioApiException('Fio API request failed with status 409.', 409),
+        );
+
+        try {
+            $operations->transactionsForAccount('token-409', self::ACCOUNT);
+            $this->fail('A 409 from FIO should have been mapped to a rate-limit refusal.');
+        } catch (FioRateLimitException $e) {
+            $this->assertSame(30, $e->retryAfter);
+        }
     }
 
     public function test_a_failed_read_does_not_burn_the_window(): void

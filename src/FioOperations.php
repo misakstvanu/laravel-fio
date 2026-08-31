@@ -309,14 +309,42 @@ XML;
     }
 
     /**
+     * The whole seconds left before the token may be used again, `0` when free.
+     *
+     * The window is read back from the cache value rather than from a store TTL,
+     * because the `array` store the test suite runs on cannot report one. The
+     * value is the expiry timestamp, and the entry expires at that same instant,
+     * so a live entry always has at least one second left to report.
+     */
+    public function cooldownRemaining(string $token): int
+    {
+        $expiresAt = Cache::get($this->cooldownKey($token));
+
+        if ($expiresAt === null) {
+            return 0;
+        }
+
+        /** A window opened before this method existed holds `true`; assume a full one. */
+        if (! is_numeric($expiresAt)) {
+            return self::TOKEN_COOLDOWN_SECONDS;
+        }
+
+        $remaining = (int) ceil((float) $expiresAt - (float) now()->format('U.u'));
+
+        return max(0, $remaining);
+    }
+
+    /**
      * Refuses a call made while the token is still inside its cooldown window.
      *
      * @throws FioRateLimitException when the window has not elapsed yet
      */
     private function enforceTokenCooldown(string $token): void
     {
-        if (Cache::has($this->cooldownKey($token))) {
-            throw new FioRateLimitException('FIO API rate limit: please wait at least 30 seconds between requests.');
+        $remaining = $this->cooldownRemaining($token);
+
+        if ($remaining > 0) {
+            throw FioRateLimitException::after($remaining);
         }
     }
 
@@ -328,7 +356,9 @@ XML;
      */
     private function markTokenUsed(string $token): void
     {
-        Cache::put($this->cooldownKey($token), true, now()->addSeconds(self::TOKEN_COOLDOWN_SECONDS));
+        $expiresAt = now()->addSeconds(self::TOKEN_COOLDOWN_SECONDS)->startOfSecond();
+
+        Cache::put($this->cooldownKey($token), $expiresAt->getTimestamp(), $expiresAt);
     }
 
     private function cooldownKey(string $token): string
@@ -342,7 +372,8 @@ XML;
         $code = $exception->getCode();
 
         if ($code === 409 || str_contains($message, 'status 409')) {
-            return new FioRateLimitException('FIO API rate limit: please wait at least 30 seconds between requests.', 0, $exception);
+            /** Fio sends no `Retry-After`, so its own rule is the only wait we can quote. */
+            return FioRateLimitException::after(self::TOKEN_COOLDOWN_SECONDS, $exception);
         }
 
         if (str_contains(strtolower($message), 'timed out')) {

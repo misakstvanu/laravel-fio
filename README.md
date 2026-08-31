@@ -32,6 +32,9 @@ Modern Laravel client for Fio Banking API (`v1/rest`).
   - accepts a list of `PaymentOrder` DTO objects
   - supports `xml` and `pain001_xml`
   - applies token cooldown guard (30s)
+- `cooldownRemaining(token)`
+  - whole seconds left before the token may be used again, `0` when it is free
+  - a refused call throws `FioRateLimitException`, whose `retryAfter` carries the same figure
 
 ## Quick usage
 
