@@ -36,6 +36,16 @@ Modern Laravel client for Fio Banking API (`v1/rest`).
   - whole seconds left before the token may be used again, `0` when it is free
   - a refused call throws `FioRateLimitException`, whose `retryAfter` carries the same figure
 
+## The 90-day rule
+
+Fio serves a period export without extra ceremony only while the requested window stays inside the
+last 90 days. A window reaching further back is refused with **HTTP 422** and a Czech body asking
+the account owner to authorise the read in Fio internet banking; that authorisation is valid for
+**10 minutes** from the moment it is granted, and the request has to be repeated inside that window.
+`FioOperations` maps exactly this refusal to `FioAuthorizationRequiredException`, leaving any other
+422 as a plain `RuntimeException`. `transactionsForAccount()` defaults to `days: 60`, which is
+inside the limit, so the exception only appears when a caller asks for a longer history.
+
 ## Quick usage
 
 ```php

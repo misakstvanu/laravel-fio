@@ -10,6 +10,7 @@ use Misakstvanu\LaravelFio\Data\TransactionsResult;
 use Misakstvanu\LaravelFio\Enums\ExportFormat;
 use Misakstvanu\LaravelFio\Enums\ImportType;
 use Misakstvanu\LaravelFio\Exceptions\FioApiException;
+use Misakstvanu\LaravelFio\Exceptions\FioAuthorizationRequiredException;
 use Misakstvanu\LaravelFio\Exceptions\FioRateLimitException;
 use Misakstvanu\LaravelFio\Exceptions\FioTimeoutException;
 use RuntimeException;
@@ -31,7 +32,7 @@ class FioOperations
                 ->transactionsByPeriod($token, $dateFrom, $dateTo, ExportFormat::Json)
                 ->json();
             $this->markTokenUsed($token);
-        } catch (FioRateLimitException|FioTimeoutException $e) {
+        } catch (FioAuthorizationRequiredException|FioRateLimitException|FioTimeoutException $e) {
             throw $e;
         } catch (FioApiException $e) {
             throw $this->mapFioException($e);
@@ -378,6 +379,15 @@ XML;
 
         if (str_contains(strtolower($message), 'timed out')) {
             return new FioTimeoutException('FIO API request timed out.', 0, $exception);
+        }
+
+        /**
+         * Fio answers 422 for more than one reason, so the Czech phrase is
+         * checked too: only the strong-authorisation refusal is remediable by
+         * authorising the read in internet banking.
+         */
+        if ($code === 422 && str_contains($message, 'silné autorizace')) {
+            return new FioAuthorizationRequiredException($message, 0, $exception);
         }
 
         return new RuntimeException($message, 0, $exception);

@@ -2,12 +2,15 @@
 
 namespace Misakstvanu\LaravelFio\Tests;
 
+use GuzzleHttp\Psr7\Response as Psr7Response;
+use Illuminate\Http\Client\Response;
 use Illuminate\Support\Facades\Cache;
 use Misakstvanu\LaravelFio\Contracts\FioClientInterface;
 use Misakstvanu\LaravelFio\Data\BankTransaction;
 use Misakstvanu\LaravelFio\Data\PaymentOrder;
 use Misakstvanu\LaravelFio\Enums\ImportType;
 use Misakstvanu\LaravelFio\Exceptions\FioApiException;
+use Misakstvanu\LaravelFio\Exceptions\FioAuthorizationRequiredException;
 use Misakstvanu\LaravelFio\Exceptions\FioRateLimitException;
 use Misakstvanu\LaravelFio\Exceptions\FioTimeoutException;
 use Misakstvanu\LaravelFio\FioOperations;
@@ -62,6 +65,17 @@ class FioOperationsTest extends TestCase
     private function cooldownKey(string $token): string
     {
         return 'fio.cooldown.'.sha1($token);
+    }
+
+    /**
+     * The exception `FioClient` raises for a given HTTP status and body.
+     *
+     * Built through `FioApiException::fromResponse()` so the message shape the
+     * mapping inspects is the real one, not a hand-written approximation.
+     */
+    private function apiException(int $status, string $body): FioApiException
+    {
+        return FioApiException::fromResponse(new Response(new Psr7Response($status, [], $body)));
     }
 
     public function test_an_empty_statement_yields_no_transactions_and_no_warning(): void
@@ -271,5 +285,47 @@ class FioOperationsTest extends TestCase
         $operations->sendPaymentOrders('token-import-retry', self::ACCOUNT, [$order], ImportType::Xml);
 
         $this->assertTrue(Cache::has($this->cooldownKey('token-import-retry')));
+    }
+
+    public function test_a_422_refusing_older_data_asks_for_strong_authorisation(): void
+    {
+        $operations = $this->operationsReplaying($this->fixture('period-transactions-empty'));
+
+        /** The verbatim body the live probe recorded — see the class doc block. */
+        $this->fakeClient()->throwOn('transactionsByPeriod', $this->apiException(
+            422,
+            'Data není možné poskytnout bez silné autorizace. Pokyn k zobrazení dat si autorizujte '
+            .'ve Vašem Internetovém bankovnictví a data si vyžádejte znovu. Platnost ověření je 10 '
+            .'minut od autorizace. Nebo požádejte o data, která nejsou starší jak 90 dní '
+            .'(od 01.06.2026), v takovém případě není autorizace třeba.',
+        ));
+
+        try {
+            $operations->transactionsForAccount('token-authorisation', self::ACCOUNT);
+            $this->fail('A strong-authorisation refusal should not have been reported as success.');
+        } catch (FioAuthorizationRequiredException $e) {
+            $this->assertStringContainsString('silné autorizace', $e->getMessage());
+            $this->assertStringContainsString('90 dní', $e->getMessage());
+        }
+
+        $this->assertFalse(Cache::has($this->cooldownKey('token-authorisation')));
+    }
+
+    public function test_an_unrelated_422_stays_a_plain_runtime_error(): void
+    {
+        $operations = $this->operationsReplaying($this->fixture('period-transactions-empty'));
+
+        $this->fakeClient()->throwOn('transactionsByPeriod', $this->apiException(
+            422,
+            'Nesprávný formát data.',
+        ));
+
+        try {
+            $operations->transactionsForAccount('token-other-422', self::ACCOUNT);
+            $this->fail('The fake was configured to fail, so the read should have thrown.');
+        } catch (\RuntimeException $e) {
+            $this->assertNotInstanceOf(FioAuthorizationRequiredException::class, $e);
+            $this->assertStringContainsString('Nesprávný formát data.', $e->getMessage());
+        }
     }
 }
