@@ -7,13 +7,14 @@ use Illuminate\Http\Client\PendingRequest;
 use Illuminate\Http\Client\Response;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Http;
+use Misakstvanu\LaravelFio\Contracts\FioClientInterface;
 use Misakstvanu\LaravelFio\Data\FioResponse;
 use Misakstvanu\LaravelFio\Enums\ExportFormat;
 use Misakstvanu\LaravelFio\Enums\ImportType;
 use Misakstvanu\LaravelFio\Enums\ResponseLanguage;
 use Misakstvanu\LaravelFio\Exceptions\FioApiException;
 
-class FioClient
+class FioClient implements FioClientInterface
 {
     public function __construct(
         private readonly string $baseUrl,

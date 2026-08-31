@@ -4,6 +4,7 @@ namespace Misakstvanu\LaravelFio;
 
 use Illuminate\Support\ServiceProvider;
 use Misakstvanu\LaravelFio\Commands\FioTestReadCommand;
+use Misakstvanu\LaravelFio\Contracts\FioClientInterface;
 
 class LaravelFioServiceProvider extends ServiceProvider
 {
@@ -25,6 +26,7 @@ class LaravelFioServiceProvider extends ServiceProvider
         });
 
         $this->app->alias('laravel-fio', FioClient::class);
+        $this->app->alias('laravel-fio', FioClientInterface::class);
     }
 
     public function boot(): void

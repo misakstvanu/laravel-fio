@@ -3,6 +3,7 @@
 namespace Misakstvanu\LaravelFio;
 
 use Illuminate\Support\Facades\Cache;
+use Misakstvanu\LaravelFio\Contracts\FioClientInterface;
 use Misakstvanu\LaravelFio\Data\BankTransaction;
 use Misakstvanu\LaravelFio\Data\PaymentOrder;
 use Misakstvanu\LaravelFio\Data\TransactionsResult;
@@ -17,7 +18,7 @@ class FioOperations
 {
     private const int TOKEN_COOLDOWN_SECONDS = 30;
 
-    public function __construct(private readonly FioClient $client) {}
+    public function __construct(private readonly FioClientInterface $client) {}
 
     public function transactionsForAccount(string $token, string $configuredAccountNumber, int $days = 60): TransactionsResult
     {
