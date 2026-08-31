@@ -77,5 +77,12 @@ php artisan fio:test-read --token=YOUR_TOKEN --operation=period --from=2026-05-0
 vendor/bin/phpunit
 ```
 
+The suite is offline by default. One test, `tests/LiveSmokeTest.php`, talks to the real Fio host and
+skips itself unless both variables below are set, so it never runs by accident:
 
+```bash
+FIO_LIVE_TEST=1 FIO_API_TOKEN=YOUR_TOKEN vendor/bin/phpunit --filter LiveSmokeTest
+```
 
+It issues a single `lastStatementNumber` request — the 30-second per-token cooldown makes a retry
+pointless — and asserts only that the response body is non-empty. The token is never printed.
