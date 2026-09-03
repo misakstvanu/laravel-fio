@@ -123,6 +123,28 @@ class FioOperationsTest extends TestCase
         $this->assertSame('Rokytná Kuba', $transaction->message);
     }
 
+    public function test_the_counterparty_name_is_read_from_fio_column_ten(): void
+    {
+        $operations = $this->operationsReplaying($this->fixture('period-transactions-counterparty'));
+
+        $result = $operations->transactionsForAccount('token-counterparty', self::ACCOUNT);
+
+        $this->assertCount(1, $result->transactions);
+        $this->assertSame('Novák, Jan', $result->transactions[0]->counterparty);
+        $this->assertSame('Novák, Jan', $result->transactions[0]->toArray()['counterparty']);
+    }
+
+    public function test_a_statement_without_column_ten_leaves_the_counterparty_null(): void
+    {
+        $operations = $this->operationsReplaying($this->fixture('period-transactions-single'));
+
+        $result = $operations->transactionsForAccount('token-no-counterparty', self::ACCOUNT);
+
+        $this->assertCount(1, $result->transactions);
+        $this->assertNull($result->transactions[0]->counterparty);
+        $this->assertNull($result->transactions[0]->toArray()['counterparty']);
+    }
+
     public function test_a_token_belonging_to_another_account_produces_a_warning(): void
     {
         $operations = $this->operationsReplaying($this->fixture('period-transactions-wrong-account'));

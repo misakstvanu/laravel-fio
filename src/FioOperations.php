@@ -132,6 +132,10 @@ class FioOperations
             counterAccount: ($rawTx['column2']['value'] ?? '').'/'.($rawTx['column3']['value'] ?? ''),
             description: $rawTx['column16']['value'] ?? null,
             message: $rawTx['column25']['value'] ?? null,
+            // `column10` is Fio's `Název protiúčtu` (the counterparty name), per the
+            // "Struktura TransactionList" table in section 5.3.1.6 JSON of Fio's REST
+            // documentation: https://www.fio.cz/docs/cz/API_Bankovnictvi.pdf (verze 16. 10. 2025).
+            counterparty: $rawTx['column10']['value'] ?? null,
         );
     }
 

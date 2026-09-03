@@ -12,6 +12,7 @@ class BankTransaction
         public readonly ?string $counterAccount,
         public readonly ?string $description,
         public readonly ?string $message,
+        public readonly ?string $counterparty = null,
     ) {}
 
     /**
@@ -27,6 +28,7 @@ class BankTransaction
             'counter_account' => $this->counterAccount,
             'description' => $this->description,
             'message' => $this->message,
+            'counterparty' => $this->counterparty,
         ];
     }
 }
